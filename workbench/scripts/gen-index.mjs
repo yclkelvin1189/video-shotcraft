@@ -29,7 +29,7 @@ const ensureLink = (linkPath, target) => {
     else return true; // 真实文件/目录（成片工程链接进来的）：不动
   } catch { /* 不存在 */ }
   mkdirSync(dirname(linkPath), { recursive: true });
-  linkDir(target, linkPath);
+  linkDir(process.platform === "win32" ? abs : target, linkPath);
   return true;
 };
 const publicDir = join(wb, "public");

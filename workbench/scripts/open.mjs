@@ -51,7 +51,7 @@ if (!relink) {
 
   // —— 2. 链接 src → proj，public/* → public/* ——
   rmLink(projLink);
-  symlinkSync(srcDir, projLink);
+  symlinkSync(srcDir, projLink, process.platform === "win32" ? "junction" : "dir");
   const pub = join(wb, "public");
   mkdirSync(pub, { recursive: true });
   // 清掉上一部片留下的链接（只删符号链接和我们建的 textures/ 兜底目录，不碰真实文件）
@@ -67,7 +67,7 @@ if (!relink) {
   if (existsSync(publicSrc)) {
     for (const e of readdirSync(publicSrc)) {
       if (e.startsWith(".")) continue;
-      symlinkSync(join(publicSrc, e), join(pub, e));
+      symlinkSync(join(publicSrc, e), join(pub, e), process.platform === "win32" ? "junction" : "dir");
       n++;
     }
   }
@@ -96,7 +96,16 @@ const readPid = () => { try { const n = Number(readFileSync(pidFile, "utf8").tri
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 /** 进程身份核实：命令行必须是本工作台的 vite 且带同一端口——pid 会被系统复用，光"活着"不算 */
 const isOurVite = (pid) => {
-  if (process.platform === "win32") return false; // 无 ps；宁可不杀
+  if (process.platform === "win32") {
+    // Match the actual process command before trusting a reusable Windows PID.
+    const ps = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const r = spawnSync(ps, ["-NoProfile", "-NonInteractive", "-Command",
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    const cmd = r.stdout?.trim() || "";
+    return r.status === 0 && cmd.includes(viteBin) &&
+      new RegExp(`(?:^|\\s)--port\\s+${PORT}(?:\\s|$)`).test(cmd);
+  }
   const r = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
   if (r.status !== 0) return false;
   const cmd = r.stdout.trim();
@@ -135,7 +144,7 @@ if (await alive()) {
   const logFile = join(wb, ".dev.log");
   const fd = openSync(logFile, "a");
   const child = spawn(process.execPath, [viteBin, "--port", String(PORT), "--strictPort"], {
-    cwd: wb, detached: true, stdio: ["ignore", fd, fd],
+    cwd: wb, detached: true, windowsHide: true, stdio: ["ignore", fd, fd],
   });
   child.unref();
   writeFileSync(pidFile, String(child.pid));

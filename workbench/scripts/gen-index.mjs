@@ -28,7 +28,8 @@ const ensureLink = (linkPath, target) => {
     else return true; // 真实文件/目录（成片工程链接进来的）：不动
   } catch { /* 不存在 */ }
   mkdirSync(dirname(linkPath), { recursive: true });
-  symlinkSync(target, linkPath);
+  symlinkSync(process.platform === "win32" ? abs : target, linkPath,
+    process.platform === "win32" ? "junction" : "dir");
   return true;
 };
 const publicDir = join(wb, "public");
